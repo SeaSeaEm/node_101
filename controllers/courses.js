@@ -1,22 +1,24 @@
 const Course = require('../models/Course');
 const asyncHandler = require('../middleware/async');
 
+const ErrorResponse = require('../utils/errorResponse');
+
 // @desc    Get all courses
 // @route   GET /api/v1/courses
 // @route   GET /api/v1/bootcamps/:bootcampId/courses
 // @access  Public
 exports.getCourses = asyncHandler(async (req, res, next) => {
-    let query;
+    if (req.params.bootcampId) {
+        const courses = await Course.find({ bootcamp: req.params.bootcampId });
 
-    if (req.params.bootcampid) {
-        query = await Course.find({ bootcamp: req.params.bootcampid });
+        return res.status(200).json({
+            success: true,
+            count: courses.length,
+            data: courses
+        });
     } else {
-        query = await Course.find().populate({ path: 'bootcamp' });
+        res.status(200).json(res.advancedResults);
     }
-
-    const courses = await query;
-
-    res.status(200).json({ success: true, count: courses.length, data: courses });
 });
 
 // @desc    Get course
@@ -48,7 +50,14 @@ exports.createCourse = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/v1/course/:id
 // @access  Private
 exports.updateCourse = asyncHandler(async (req, res, next) => {
-    const course = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+    let course = await Course.findById(req.params.id);
+
+    if (course.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return next(new ErrorResponse(`User ${req.user.id} is not authorized to update this course`, 201))
+    }
+
+    course = await Course.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+
 
     if (!course) {
         return next(error);
@@ -61,11 +70,17 @@ exports.updateCourse = asyncHandler(async (req, res, next) => {
 // @route   DELETE /api/v1/course/:id
 // @access  Private
 exports.deleteCourse = asyncHandler(async (req, res, next) => {
-    const course = await Course.findByIdAndDelete(req.params.id);
+    const course = await Course.findById(req.params.id);
 
     if (!course) {
         return next(error);
     }
+
+    if (course.user.toString() !== req.user.id && req.user.role !== 'admin') {
+        return next(new ErrorResponse(`User ${req.user.id} is not authorized to delete this course`, 201))
+    }
+
+    course.remove();
 
     res.status(200).json({ success: true });
 });
